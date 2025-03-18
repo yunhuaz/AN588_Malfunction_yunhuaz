@@ -1,0 +1,257 @@
+---
+title: "AN588_Malfunction_yunhuaz"
+author: "Tiffany Zhu"
+output: html_document
+---
+
+### Write a simple R function, `Z.prop.test()`, that can perform one- or two-sample Z-tests for proportion data.
+
+```{r}
+z_prop <- function(p1,n1,p2 = NULL,n2 = NULL, p0, alternative = "two.sided", conf.level = 0.95) {
+  # Function to check normality condition
+  norm_approx <- function(p, n) {
+    return(n * p > 5 && n * (1 - p) > 5)
+  }
+  # Calculate z_alpha based on the confidence level
+  z_alpha <- qnorm(1 - (1 - conf.level) / 2)
+  
+   # One-Sample Test
+  if (is.null(p2) || is.null(n2)) {
+    # Check Normal Approximation for one-sample test
+    if (!norm_approx(p1, n1)) {
+      warning("Normal approximation may not be valid for one-sample test")
+    }
+    
+    # Calculate standard error and Z statistic
+    se <- sqrt(p0 * (1 - p0) / n1)
+    Z <- (p1 - p0) / se
+    
+    # Calculate p-value
+    if (alternative == "two.sided") {
+      P <- 2 * pnorm(-abs(Z))
+    } else if (alternative == "less") {
+      P <- pnorm(Z)
+    } else if (alternative == "greater") {
+      P <- pnorm(Z, lower.tail = FALSE)
+    } else {
+      stop("Invalid alternative hypothesis.")
+    }
+    
+    # Confidence Interval for p1
+    CI <- c(p1 - z_alpha * se, p1 + z_alpha * se)
+    
+  } else {
+    
+    #Two-Sample Test
+    
+    # Checking Normal Approximation for both samples
+    if (!norm_approx(p1,n1) || !norm_approx(p2,n2)) {
+      warning("Normal approximation may not be valid for two-sample test")
+    }
+    
+    # Calculate Standard Error and Z stat
+     se <- sqrt((p1 * (1 - p1)) / n1 + (p2 * (1 - p2)) / n2)
+    Z <- (p1 - p2) / se
+    
+    # Calculate p-value
+    if (alternative == "two.sided") {
+      P <- 2 * pnorm(-abs(Z))
+    } else if (alternative == "less") {
+      P <- pnorm(Z)
+    } else if (alternative == "greater") {
+      P <- pnorm(Z, lower.tail = FALSE)
+    } else {
+      stop("Invalid alternative hypothesis.")
+    }
+    
+    # Confidence Interval for (p1 - p2)
+    CI <- c((p1 - p2) - z_alpha * se, (p1 - p2) + z_alpha * se)
+  }
+  
+  # Return results
+  return(list(Z = Z, P = P, CI = CI))
+}
+
+```
+
+### The dataset from Kamilar and Cooper has in it a large number of variables related to life history and body size. For this exercise, the end aim is to fit a simple linear regression model to predict longevity (`MaxLongevity_m`) measured in months from species’ brain size (`Brain_Size_Species_Mean`) measured in grams. Do the following for both `longevity~brain size` and `log(longevity)~log(brain size)`:
+
+```{r}
+#Loading libraries
+library(ggplot2)
+library(dplyr)
+
+# Setting Data up 
+data <- read.csv ("/Users/kacylin/Desktop/KamilarAndCooperData.csv") 
+
+#Model 1: Longevity ~ Brain Size
+m1 <- lm(MaxLongevity_m ~ Brain_Size_Species_Mean, data = data)
+
+# Model 2: Log(Longevity) ~ Log(Brain Size)
+m2 <- lm(log(MaxLongevity_m) ~ log(Brain_Size_Species_Mean), data = data)
+
+```
+
+```{r}
+# Scatterplots with fitted line for m1
+plot1 <- ggplot(data, aes(x = Brain_Size_Species_Mean, y = MaxLongevity_m)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  geom_text(aes(x = max(Brain_Size_Species_Mean) * 0.8, y = max(MaxLongevity_m) * 0.9),
+            label = paste("y =", round(coef(m1)[1], 2), "+", round(coef(m1)[2], 2), "x"),
+            color = "blue") +
+  labs(title = "Longevity ~ Brain Size",
+       x = "Brain Size (g)",
+       y = "Longevity (months)")
+
+plot1
+```
+
+```{r}
+# Scatterplot with fitted line for m2
+plot2 <- ggplot(data, aes(x = log(Brain_Size_Species_Mean), y = log(MaxLongevity_m))) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "green") +
+  geom_text(aes(x = max(log(Brain_Size_Species_Mean)) * 0.8, y = max(log(MaxLongevity_m)) * 0.9),
+            label = paste("y =", round(coef(m2)[1], 2), "+", round(coef(m2)[2], 2), "x"),
+            color = "purple") +
+  labs(title = "Log(Longevity) ~ Log(Brain Size)",
+       x = "Log(Brain Size)",
+       y = "Log(Longevity)")
+
+plot2
+```
+
+```{r}
+# Interpret the Slope
+# Store models in a list
+models <- list(
+  "Longevity ~ Brain Size" = m1,
+  "Log(Longevity) ~ Log(Brain Size)" = m2
+)
+# Initialize an empty dataframe
+results <- data.frame(
+  Slope = numeric(),
+  P_Value = numeric(),
+  CI_Lower = numeric(),
+  CI_Upper = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Loop through each model
+for (model_name in names(models)) {
+  model <- models[[model_name]]
+  
+  # Extract slope (beta1)
+  slope <- coef(model)[2]
+  
+  # Extract p-value for the slope
+  p_value <- summary(model)$coefficients[2, 4]
+  
+  # Extract 90% confidence interval for the slope
+  ci <- confint(model, level = 0.90)[2, ]
+  
+  # Add results to the dataframe
+  results <- rbind(results, data.frame(
+    Slope = slope,
+    P_Value = p_value,
+    CI_Lower = ci[1],
+    CI_Upper = ci[2],
+    stringsAsFactors = FALSE
+  ))
+}
+
+results
+```
+
+Hypothesis test:
+
+H~0~: $β_{1} = 0$
+
+There is no relationship between brain size mean and longevity.
+
+H~A~: $β_{1} \neq 0$
+
+There is a relationship between brain size mean and longevity.
+
+The point estimate of the slope for the normal model is 1.21 with a 90% interval of (1.03, 1.40). For each one-unit increase in brain size, the longevity is estimated to increase by 1.21 units. The p-value of 2.68e-20 is less than 0.05, therefore we reject the null hypothesis suggesting that there is enough evidence to indicate a relationship between brain size and longevity.
+
+The point estimate of the slope for the log-transformed model is 0.23 with a 90% interval of (0.20, 0.26). For each 1% increase in brain size, there is a 0.23% increase in longevity. The p-value of 2.16e-25 is less than 0.05, therefore we reject the null hypothesis suggesting that there is enough evidence to indicate a relationship between brain size and longevity.
+
+```{r}
+# Adding 90% CI and PI to the m1 plot
+plot1 <- plot1 +
+  geom_smooth(method = "lm", se = TRUE, level = 0.90, color = "red", fill = "lightblue") +
+  geom_smooth(method = "lm", se = TRUE, level = 0.90, color = "blue", fill = "pink", linetype = "dashed")
+
+plot1
+```
+
+```{r}
+# Adding 90% CI and PI to the m2 plot
+plot2 <- plot2 +
+  geom_smooth(method = "lm", se = TRUE, level = 0.90, color = "green", fill = "lightblue") +
+  geom_smooth(method = "lm", se = TRUE, level = 0.90, color = "purple", fill = "pink", linetype = "dashed")
+
+plot2
+```
+
+```{r}
+# Setting data up
+new_data <- data.frame(Brain_Size_Species_Mean = 800)
+
+# Predicting longevity using normal model
+predict1 <- predict(m1, newdata = new_data, interval = "prediction", level = 0.90)
+
+# Predict log(longevity) using the log-transformed model
+log_prediction <- predict(m2, newdata = new_data, interval = "prediction", level = 0.90)
+
+# Convert the prediction back to the original scale (longevity in months)
+predict2 <- exp(log_prediction)
+
+```
+
+```{r}
+# Determining which model is better
+# Extract R-squared values
+r2_m1 <- summary(m1)$r.squared
+r2_m2 <- summary(m2)$r.squared
+
+# Combine predictions into a dataframe
+comp_model <- data.frame(
+  Model = c("Longevity ~ Brain Size", "Log(Longevity) ~ Log(Brain Size)"),
+  Point_Estimate = c(predict1[1, "fit"], predict2[1, "fit"]),
+  PI_Lower = c(predict1[1, "lwr"], predict2[1, "lwr"]),
+  PI_Upper = c(predict1[1, "upr"], predict2[1, "upr"]),
+  R_Squared = c(r2_m1, r2_m2),
+  PI_Range = c(predict1[1, "upr"] - predict1[1, "lwr"], predict2[1, "upr"] - predict2[1, "lwr"])
+)
+
+comp_model
+```
+
+Using the normal model, the predicted longevity for a species with a brain weight of 800 grams is 1223.34 months, with a 90% prediction interval of (1021.80,1424.88).
+
+Using the transformed model, the predicted longevity for a species with a brain weight of 800 grams is 629.01 months, with a 90% prediction interval of (412.16, 959.94).
+
+The point estimate when predicting using both the normal model and log-transformed model data in between the 90% interval. However, the width of the PI intervals display uncertainty in both models. The normal model's PI is 403.08 months wide while the log-transformed model's PI is 547.78 months wide, the transformed model has a wider PI interval than normal model indicating there is more uncertainty. Due to this uncertainty and the large variation in predicted values between the two models, we should not fully trust the model’s predictions for this explanatory variable. The wide PIs suggest high variability in longevity, making it difficult to confidently predict individual observations.
+
+The log-transformed model had an R-squared value of 0.57 while the normal model had an R-squared value of 0.49. Therefore the log-transformed model is a better fit for the data than the normal model as it fits the data more accurately.
+
+## Issues
+
+1.  The length of the function made it difficult to keep track of brackets, leading to occasional errors. I had to retrace my steps multiple times to identify and correct missing or misplaced brackets.
+2.  I attempted to use for loops to quicken the process, but due to the varying types of data there was a lot of initializing elements. A manual approach might have been more efficient for this task.
+3.  To improve visualization, I created dataframes to organize the results. However, the extensive subsetting introduced minor errors like keeping track of bracket led me to believe a manual approach could have potentially also been more efficient.
+
+
+PL: The function in the first part is well-structured, clear, and easy to follow!  
+Suggestion to maybe use warning signs, if it doesn't follow the rules of thumb.
+
+geom_text() is a great addition to display the fitted regression equation directly on the plot, which is very useful for interpretation. The use of colors are also visually distinct! 
+Something I didn't do, but noticed was the loop function is also a great way for Extracting slope, p-value, and confidence interval for both models
+
+The hypothesis testing section is clearly explained, with the null and alternative hypotheses defined.
+It would be useful to mention the p-values explicitly in the interpretation to reinforce why the null hypothesis is rejected for both models.
+
+Overall, everything looks great, just some minor adjustments! 
